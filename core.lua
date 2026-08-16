@@ -448,14 +448,79 @@ function Module.Init(cfg)
 			Render()
 		end
 
+		-- // Morph // --
+		-- The window sits centre-screen and the island lives at the top, so
+		-- closing flies the pill up from centre while it grows, and opening
+		-- drops it back down while it shrinks away. Anchor-relative, so it
+		-- needs nothing from WindUI's internals and cannot break when the
+		-- library changes.
+
+		local HOME = UDim2.new(0.5, 0, 0, 10)
+		local ORIGIN = UDim2.new(0.5, 0, 0.5, -20)
+		local morphToken = 0
+
+		local IN_MOVE = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		local IN_FADE = TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local OUT_MOVE = TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+		local function MorphIn()
+			morphToken += 1
+			local token = morphToken
+
+			pill.Position = ORIGIN
+			pill.BackgroundTransparency = 1
+			scale.Scale = 0.35
+			title.TextTransparency = 1
+			stroke.Transparency = 1
+			pill.Visible = true
+
+			TweenService:Create(pill, IN_MOVE, { Position = HOME }):Play()
+			TweenService:Create(scale, IN_MOVE, { Scale = 1 }):Play()
+			TweenService:Create(pill, IN_FADE, { BackgroundTransparency = 0.02 }):Play()
+
+			-- Text and outline come in a beat later so the capsule reads as
+			-- arriving first and filling in, rather than everything at once.
+			task.delay(0.12, function()
+				if morphToken ~= token then return end
+				TweenService:Create(title, IN_FADE, { TextTransparency = 0 }):Play()
+				TweenService:Create(stroke, IN_FADE, {
+					Transparency = status and 0.45 or 0.75,
+				}):Play()
+				if detail ~= nil then
+					TweenService:Create(sub, IN_FADE, { TextTransparency = 0.2 }):Play()
+				end
+			end)
+		end
+
+		local function MorphOut()
+			morphToken += 1
+			local token = morphToken
+
+			TweenService:Create(pill, OUT_MOVE, {
+				Position = ORIGIN,
+				BackgroundTransparency = 1,
+			}):Play()
+			TweenService:Create(scale, OUT_MOVE, { Scale = 0.35 }):Play()
+			TweenService:Create(title, OUT_MOVE, { TextTransparency = 1 }):Play()
+			TweenService:Create(sub, OUT_MOVE, { TextTransparency = 1 }):Play()
+			TweenService:Create(stroke, OUT_MOVE, { Transparency = 1 }):Play()
+
+			task.delay(0.26, function()
+				if morphToken ~= token then return end
+				pill.Visible = false
+				pill.Position = HOME
+				scale.Scale = 1
+			end)
+		end
+
 		function Island:Visible(on)
 			wanted = on and true or false
-			pill.Visible = wanted and not menuOpen
+			if wanted and not menuOpen then MorphIn() else MorphOut() end
 		end
 
 		function Island:SetMenuOpen(open)
 			menuOpen = open and true or false
-			pill.Visible = wanted and not menuOpen
+			if wanted and not menuOpen then MorphIn() else MorphOut() end
 		end
 
 		function Island:SetOpener(fn)
@@ -503,7 +568,10 @@ function Module.Init(cfg)
 			if opener then SafeCall(opener) end
 		end)
 
+		-- Boot: lay out the content, then bounce in from centre so the very
+		-- first appearance uses the same morph as every close after it.
 		Render()
+		MorphIn()
 	end
 
 	return Core
