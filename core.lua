@@ -589,6 +589,93 @@ function Module.Init(cfg)
 			opener = fn
 		end
 
+		-- One call wires the island to a UI library's window: the pill becomes
+		-- the open button, hides while the panel is up, and the panel collapses
+		-- into it on close. Lives here rather than in the script so every hub
+		-- gets the whole effect, not just the ones that copied the plumbing.
+		--
+		--   Island:AttachWindow(Window, Vector2.new(700, 500))
+		--
+		-- expectedSize is whatever you passed the library as the window size;
+		-- it is how the panel is picked out from the other frames on screen.
+		function Island:AttachWindow(window, expectedSize)
+			if not window then return end
+			expectedSize = expectedSize or Vector2.new(700, 500)
+
+			local frame, cachedPos, cachedSize
+
+			local function Capture()
+				local host = Core.gethui()
+				local vp = Camera.ViewportSize
+				local best, bestDelta = nil, math.huge
+
+				for _, obj in ipairs(host:GetDescendants()) do
+					if obj:IsA("Frame") and obj.Visible then
+						local s = obj.AbsoluteSize
+
+						-- Anything filling the screen is a scrim or a root
+						-- container, not the panel. Picking by area chose one
+						-- of those and the ghost covered the whole display, so
+						-- match against the requested size instead.
+						local plausible = s.X > 260 and s.Y > 200
+							and s.X < vp.X * 0.92 and s.Y < vp.Y * 0.92
+
+						if plausible then
+							local delta = math.abs(s.X - expectedSize.X)
+								+ math.abs(s.Y - expectedSize.Y)
+							if delta < bestDelta then best, bestDelta = obj, delta end
+						end
+					end
+				end
+
+				if best then
+					frame = best
+					cachedPos, cachedSize = best.AbsolutePosition, best.AbsoluteSize
+				else
+					frame = nil
+					cachedSize = expectedSize
+					cachedPos = Vector2.new(
+						(vp.X - expectedSize.X) / 2,
+						(vp.Y - expectedSize.Y) / 2
+					)
+				end
+			end
+
+			-- Read live at close time. A snapshot taken on open makes the ghost
+			-- collapse from wherever the panel used to be once it is dragged.
+			-- The cache covers the frame having gone or already started
+			-- shrinking, which is what the size check rejects.
+			local function Geometry()
+				if frame and frame.Parent then
+					local s = frame.AbsoluteSize
+					if s.X > 260 and s.Y > 200 then
+						return frame.AbsolutePosition, s
+					end
+				end
+				return cachedPos, cachedSize
+			end
+
+			Island:SetOpener(function() window:Open() end)
+
+			SafeCall(function()
+				window:OnOpen(function()
+					Island:SetMenuOpen(true)
+					-- After the open animation settles, so the geometry is real.
+					task.delay(0.4, Capture)
+				end)
+			end)
+
+			SafeCall(function()
+				window:OnClose(function()
+					Island:SetMenuOpen(false, Geometry())
+				end)
+			end)
+
+			-- Most libraries open on creation, so grab it without waiting for
+			-- the first toggle.
+			task.delay(1, Capture)
+		end
+
 		-- // Carousel // --
 		-- Idle only. A claimed island keeps its status; releasing it resumes
 		-- here. Hover pauses it so the text cannot change under a click.
