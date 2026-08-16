@@ -29,6 +29,10 @@ function Module.Init(cfg)
 	local LOGO_ID = cfg.LogoId
 	local ACCENT = cfg.Accent or Color3.fromRGB(76, 141, 255)
 
+	-- Island options. Everything here is also settable at runtime, so a script
+	-- can start from a preset and change its mind while running.
+	local ICFG = cfg.Island or {}
+
 	local Core = {}
 
 	-- ======================================================== SERVICES
@@ -220,7 +224,6 @@ function Module.Init(cfg)
 		local IDLE_W = Core.IsMobile and 112 or 132
 		local IDLE_H = Core.IsMobile and 30 or 34
 		local TEXT_SIZE = Core.IsMobile and 12 or 13
-		local ROTATE_SECONDS = 4
 
 		local status, detail = nil, nil
 		local pushToken, sizeToken = 0, 0
@@ -228,7 +231,19 @@ function Module.Init(cfg)
 		local rotIndex = 1
 		local currentW, currentH = IDLE_W, IDLE_H
 		local opener = nil
-		local accent = ACCENT
+		local accent = ICFG.Accent or ACCENT
+		local statusColor = nil          -- per-status tint, overrides accent
+		local progress = nil             -- nil = bar hidden, 0..1 = fill
+		local idleProvider = ICFG.IdleItems
+		local rotateSeconds = ICFG.Rotate or 4
+		local anchorName = ICFG.Position or "TopCenter"
+		local badgeText = nil
+		local statusExpiry = nil        -- os.clock() deadline for a timed Status
+		local idleHideAfter = ICFG.AutoHide or 0   -- 0 = never shrink
+		local lastActivity = os.clock()
+		local dimmed = false
+		local pushQueue = {}
+		local pushBusy = false
 
 		-- GetProductInfo yields and can fail, so it must never sit in the boot
 		-- path. Fetch in the background; the carousel shows the placeholder
@@ -241,7 +256,16 @@ function Module.Init(cfg)
 			if ok and info and info.Name then gameName = info.Name end
 		end)
 
+		-- Default carousel. A script can replace it with a list or with a
+		-- function, and a function is re-read every rotation so it can show live
+		-- values: money, eggs stolen, whatever that game cares about.
 		local function IdleItems()
+			if type(idleProvider) == "function" then
+				local ok, list = pcall(idleProvider)
+				if ok and type(list) == "table" and #list > 0 then return list end
+		elseif type(idleProvider) == "table" and #idleProvider > 0 then
+				return idleProvider
+			end
 			return { HUB_NAME, gameName, (DISCORD:gsub("https://", "")) }
 		end
 
@@ -304,6 +328,13 @@ function Module.Init(cfg)
 		-- Hidden while idle. Real iOS shows no icon until an activity claims
 		-- the island, and keeping it hidden is also what lets the text sit
 		-- truly centred rather than pushed off by a fixed left inset.
+		-- ShowLogo = "Always" keeps the mark on screen even while idle;
+		-- "Status" is the iOS behaviour of only showing it once an activity
+		-- claims the island. A decal that never loads would otherwise leave a
+		-- blank square, so the label hides itself if IsLoaded stays false.
+		local logoMode = ICFG.ShowLogo or "Always"
+		local logoOk = LOGO_ID ~= nil
+
 		local logo = Instance.new("ImageLabel")
 		logo.BackgroundTransparency = 1
 		logo.AnchorPoint = Vector2.new(0, 0.5)
@@ -313,6 +344,18 @@ function Module.Init(cfg)
 		logo.ImageTransparency = 1
 		logo.Visible = false
 		logo.Parent = pill
+
+		if logoOk then
+			task.delay(4, function()
+				if not logo.Parent then return end
+				if not logo.IsLoaded then
+					logoOk = false
+					logo.Visible = false
+					warn(("[%s] logo asset %s did not load. Upload it as an Image, not a Decal.")
+						:format(HUB_NAME, tostring(LOGO_ID)))
+				end
+			end)
+		end
 
 		local title = Instance.new("TextLabel")
 		title.BackgroundTransparency = 1
@@ -340,6 +383,52 @@ function Module.Init(cfg)
 		sub.TextTransparency = 0.2
 		sub.Visible = false
 		sub.Parent = pill
+
+		-- Small counter pill on the right. Hidden until a script sets one.
+		local badge = Instance.new("TextLabel")
+		badge.AnchorPoint = Vector2.new(1, 0.5)
+		badge.Position = UDim2.new(1, -10, 0.5, 0)
+		badge.Size = UDim2.fromOffset(30, 16)
+		badge.BackgroundColor3 = Color3.fromRGB(30, 33, 40)
+		badge.BorderSizePixel = 0
+		badge.Font = Enum.Font.GothamMedium
+		badge.TextSize = 11
+		badge.TextColor3 = Color3.fromRGB(235, 235, 235)
+		badge.Text = ""
+		badge.Visible = false
+		badge.Parent = pill
+
+		local badgeCorner = Instance.new("UICorner")
+		badgeCorner.CornerRadius = UDim.new(1, 0)
+		badgeCorner.Parent = badge
+
+		-- A thin fill along the bottom edge. Hidden until a script asks for it,
+		-- so nothing changes for hubs that never call Progress.
+		local barTrack = Instance.new("Frame")
+		barTrack.AnchorPoint = Vector2.new(0.5, 1)
+		barTrack.Position = UDim2.new(0.5, 0, 1, -5)
+		barTrack.Size = UDim2.new(1, -24, 0, 3)
+		barTrack.BackgroundColor3 = Color3.fromRGB(60, 62, 70)
+		barTrack.BackgroundTransparency = 0.4
+		barTrack.BorderSizePixel = 0
+		barTrack.Visible = false
+		barTrack.Parent = pill
+
+		local barTrackCorner = Instance.new("UICorner")
+		barTrackCorner.CornerRadius = UDim.new(1, 0)
+		barTrackCorner.Parent = barTrack
+
+		local barFill = Instance.new("Frame")
+		barFill.AnchorPoint = Vector2.new(0, 0.5)
+		barFill.Position = UDim2.new(0, 0, 0.5, 0)
+		barFill.Size = UDim2.new(0, 0, 1, 0)
+		barFill.BackgroundColor3 = accent
+		barFill.BorderSizePixel = 0
+		barFill.Parent = barTrack
+
+		local barFillCorner = Instance.new("UICorner")
+		barFillCorner.CornerRadius = UDim.new(1, 0)
+		barFillCorner.Parent = barFill
 
 		-- // Motion // --
 
@@ -408,7 +497,9 @@ function Module.Init(cfg)
 			-- Width is measured off the real string rather than guessed, so a
 			-- long item name grows the capsule instead of truncating away.
 			local widest = math.max(Measure(head, TEXT_SIZE), twoLine and Measure(body, TEXT_SIZE - 2) or 0)
-			local padding = claimed and 62 or 34 -- room for the logo once claimed
+			local padding = 34
+			if logoOk and (logoMode == "Always" or claimed) then padding = padding + 28 end
+			if badgeText ~= nil then padding = padding + 34 end
 			local maxWidth = math.min(400, Camera.ViewportSize.X - 40)
 
 			currentW = math.clamp(math.floor(widest + padding), IDLE_W, maxWidth)
@@ -427,19 +518,80 @@ function Module.Init(cfg)
 				end)
 			end
 
-			logo.Visible = claimed and LOGO_ID ~= nil
-			TweenService:Create(logo, FADE, { ImageTransparency = claimed and 0 or 1 }):Play()
+			local showLogo = logoOk and (logoMode == "Always" or claimed)
+			logo.Visible = showLogo
+			TweenService:Create(logo, FADE, { ImageTransparency = showLogo and 0 or 1 }):Play()
+
+			badge.Visible = badgeText ~= nil
+			if badgeText ~= nil then
+				badge.Text = badgeText
+				badge.Size = UDim2.fromOffset(math.max(30, Measure(badgeText, 11) + 16), 16)
+			end
+
+			-- A status colour beats the accent, which is how a script marks a run
+			-- as failing or finished without touching the theme.
+			local tint = statusColor or accent
+			stroke.Color = tint
+			sub.TextColor3 = tint
+			barFill.BackgroundColor3 = tint
+
 			TweenService:Create(stroke, FADE, {
 				Transparency = hovering and 0.35 or (claimed and 0.45 or 0.75),
 			}):Play()
+
+			barTrack.Visible = progress ~= nil
+			if progress ~= nil then
+				TweenService:Create(barFill, FADE, {
+					Size = UDim2.new(math.clamp(progress, 0, 1), 0, 1, 0),
+				}):Play()
+			end
 		end
 
 		-- // API // --
 
-		function Island:Status(text)
+		-- opts: { Color = Color3, Icon = number|string }
+		function Island:Status(text, opts)
 			pushToken += 1 -- cancels any in-flight Push revert
 			status = text
+			opts = opts or {}
+
+			statusColor = typeof(opts.Color) == "Color3" and opts.Color or nil
+			statusExpiry = tonumber(opts.For) and (os.clock() + opts.For) or nil
+			Island._wake()
+
+			if opts.Icon ~= nil then
+				local id = tostring(opts.Icon):gsub("rbxassetid://", "")
+				logo.Image = "rbxassetid://" .. id
+			elseif LOGO_ID then
+				logo.Image = "rbxassetid://" .. LOGO_ID
+			end
+
 			Render()
+		end
+
+		-- Any string shows the chip, nil hides it.
+		function Island:Badge(text)
+			badgeText = (text ~= nil) and tostring(text) or nil
+			Render()
+		end
+
+		-- alpha 0..1 shows the bar, nil hides it.
+		function Island:Progress(alpha)
+			progress = (type(alpha) == "number") and math.clamp(alpha, 0, 1) or nil
+			Render()
+		end
+
+		-- A list, or a function returning one. A function is re-read on every
+		-- rotation, so the carousel can show live numbers.
+		function Island:SetIdleItems(items)
+			idleProvider = items
+			rotIndex = 1
+			if status == nil then Render() end
+		end
+
+		function Island:SetRotateInterval(seconds)
+			rotateSeconds = tonumber(seconds) or 4
+			Island._rebindRotate()
 		end
 
 		function Island:Detail(text)
@@ -447,24 +599,54 @@ function Module.Init(cfg)
 			Render()
 		end
 
-		function Island:Push(text, seconds)
+		-- Pushes queue instead of clobbering. Firing one per rare drop used to
+		-- mean only the last was ever seen; now they play in order.
+		local function DrainPush()
+			if pushBusy then return end
+			local entry = table.remove(pushQueue, 1)
+			if not entry then return end
+
+			pushBusy = true
 			pushToken += 1
 			local token = pushToken
-			local previous = status
+			local previous, previousColor = status, statusColor
 
-			status = text
+			status = entry.Text
+			statusColor = entry.Color
+			Island._wake()
 			Render()
 
-			task.delay(seconds or 3, function()
-				if pushToken ~= token then return end
-				status = previous
+			task.delay(entry.Seconds, function()
+				pushBusy = false
+				if pushToken ~= token then
+					pushQueue = {}
+					return
+				end
+				status, statusColor = previous, previousColor
 				Render()
+				DrainPush()
 			end)
+		end
+
+		function Island:Push(text, seconds, opts)
+			-- Cap the backlog: a loop pushing every frame would otherwise
+			-- build a queue that outlives the thing it is reporting on.
+			if #pushQueue >= 4 then table.remove(pushQueue, 1) end
+
+			pushQueue[#pushQueue + 1] = {
+				Text = text,
+				Seconds = seconds or 3,
+				Color = (opts and typeof(opts.Color) == "Color3") and opts.Color or nil,
+			}
+			DrainPush()
 		end
 
 		function Island:Clear()
 			pushToken += 1
-			status, detail = nil, nil
+			status, detail, statusColor, progress = nil, nil, nil, nil
+			badgeText, statusExpiry = nil, nil
+			pushQueue = {}
+			if LOGO_ID then logo.Image = "rbxassetid://" .. LOGO_ID end
 			Render()
 		end
 
@@ -474,7 +656,26 @@ function Module.Init(cfg)
 		-- because WindUI runs its own close animation on the real frame, and two
 		-- tweens fighting over one instance looks worse than a stand-in.
 
-		local HOME = UDim2.new(0.5, 0, 0, 10)
+		-- Anchor presets. HOME is read at morph time so SetPosition takes effect
+		-- on the next open/close without rebuilding anything.
+		local ANCHORS = {
+			TopCenter = { UDim2.new(0.5, 0, 0, 10), Vector2.new(0.5, 0) },
+			TopLeft = { UDim2.new(0, 14, 0, 10), Vector2.new(0, 0) },
+			TopRight = { UDim2.new(1, -14, 0, 10), Vector2.new(1, 0) },
+			BottomCenter = { UDim2.new(0.5, 0, 1, -14), Vector2.new(0.5, 1) },
+		}
+
+		local function Anchor()
+			return ANCHORS[anchorName] or ANCHORS.TopCenter
+		end
+
+		local function ApplyAnchor()
+			local a = Anchor()
+			pill.AnchorPoint = a[2]
+			pill.Position = a[1]
+		end
+
+		ApplyAnchor()
 		local morphToken = 0
 
 		local SUCK = TweenInfo.new(0.30, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
@@ -483,6 +684,17 @@ function Module.Init(cfg)
 
 		-- fromPos/fromSize are the panel's absolute geometry. Omit them and the
 		-- island simply snaps in without a ghost, which is what boot does.
+		-- Where the ghost collapses to: the capsule's centre in absolute pixels,
+		-- derived from the anchor so it follows SetPosition.
+		local function GhostTarget()
+			local vp = Camera.ViewportSize
+			local a = Anchor()[1]
+			return UDim2.fromOffset(
+				a.X.Scale * vp.X + a.X.Offset,
+				a.Y.Scale * vp.Y + a.Y.Offset + IDLE_H / 2
+			)
+		end
+
 		local function MorphIn(fromPos, fromSize)
 			morphToken += 1
 			local token = morphToken
@@ -511,7 +723,7 @@ function Module.Init(cfg)
 				TweenService:Create(gcorner, SUCK, { CornerRadius = UDim.new(0, 60) }):Play()
 
 				TweenService:Create(ghost, SUCK, {
-					Position = UDim2.fromOffset(Camera.ViewportSize.X / 2, 10 + IDLE_H / 2),
+					Position = GhostTarget(),
 					Size = UDim2.fromOffset(IDLE_W * 0.5, IDLE_H * 0.6),
 					BackgroundTransparency = 1,
 				}):Play()
@@ -525,7 +737,7 @@ function Module.Init(cfg)
 
 				-- Starts as a sliver at full height and springs out sideways, so
 				-- the motion is horizontal rather than a uniform scale-up.
-				pill.Position = HOME
+				pill.Position = Anchor()[1]
 				pill.Size = UDim2.fromOffset(22, currentH)
 				pill.BackgroundTransparency = 0.02
 				scale.Scale = 1
@@ -596,13 +808,19 @@ function Module.Init(cfg)
 			opener = fn
 		end
 
+		-- TopCenter | TopLeft | TopRight | BottomCenter
+		function Island:SetPosition(name)
+			if not ANCHORS[name] then return end
+			anchorName = name
+			ApplyAnchor()
+		end
+
 		-- The island is built before any UI library exists, so it cannot read a
 		-- theme itself. Hand it one and it will follow along.
 		function Island:SetAccent(color)
 			if typeof(color) ~= "Color3" then return end
 			accent = color
-			stroke.Color = accent
-			sub.TextColor3 = accent
+			Render()
 		end
 
 		-- One call wires the island to a UI library's window: the pill becomes
@@ -696,13 +914,61 @@ function Module.Init(cfg)
 		-- Idle only. A claimed island keeps its status; releasing it resumes
 		-- here. Hover pauses it so the text cannot change under a click.
 
-		Scheduler:Every("IslandRotate", ROTATE_SECONDS, function()
-			if status ~= nil or hovering or menuOpen or not pill.Visible then return end
-
-			local items = IdleItems()
-			rotIndex = (rotIndex % #items) + 1
+		-- Idle dimming. After AutoHide seconds with nothing to say the capsule
+		-- shrinks to a sliver and fades back, and any activity wakes it. Off by
+		-- default because a hub that only ever idles would just vanish.
+		function Island._wake()
+			lastActivity = os.clock()
+			if not dimmed then return end
+			dimmed = false
+			TweenService:Create(pill, FADE, { BackgroundTransparency = 0.02 }):Play()
+			TweenService:Create(title, FADE, { TextTransparency = 0 }):Play()
 			Render()
+		end
+
+		function Island:SetAutoHide(seconds)
+			idleHideAfter = tonumber(seconds) or 0
+			if idleHideAfter <= 0 then Island._wake() end
+		end
+
+		Scheduler:Every("IslandIdle", 0.5, function()
+			-- A timed Status expires itself, so a stuck state cannot keep
+			-- claiming the island after whatever set it has stopped.
+			if statusExpiry and os.clock() >= statusExpiry then
+				statusExpiry = nil
+				Island:Clear()
+				return
+			end
+
+			if idleHideAfter <= 0 or dimmed or not pill.Visible then return end
+			if status ~= nil or hovering or menuOpen then
+				lastActivity = os.clock()
+				return
+			end
+
+			if os.clock() - lastActivity >= idleHideAfter then
+				dimmed = true
+				TweenService:Create(pill, FADE, { BackgroundTransparency = 0.45 }):Play()
+				TweenService:Create(title, FADE, { TextTransparency = 0.75 }):Play()
+			end
 		end)
+
+		-- Re-registered whenever the interval changes; Scheduler:Every keys on
+		-- the name, so this replaces rather than stacks. Interval 0 stops it.
+		function Island._rebindRotate()
+			Scheduler:Stop("IslandRotate")
+			if rotateSeconds <= 0 then return end
+
+			Scheduler:Every("IslandRotate", rotateSeconds, function()
+				if status ~= nil or hovering or menuOpen or not pill.Visible then return end
+
+				local items = IdleItems()
+				rotIndex = (rotIndex % #items) + 1
+				Render()
+			end)
+		end
+
+		Island._rebindRotate()
 
 		-- // Interaction // --
 
@@ -712,6 +978,7 @@ function Module.Init(cfg)
 
 		pill.MouseEnter:Connect(function()
 			hovering = true
+			Island._wake()
 			TweenService:Create(stroke, FADE, { Transparency = 0.35 }):Play()
 		end)
 
