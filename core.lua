@@ -975,6 +975,13 @@ function Module.Init(cfg)
 				end)
 			end)
 
+			-- And the reverse, so unloading any other way takes the library's
+			-- own ScreenGuis with it. Re-entry is safe: Destroy sets Dead
+			-- before running callbacks, so the OnDestroy above returns early.
+			Cleanup:Callback(function()
+				pcall(function() window:Destroy() end)
+			end)
+
 			-- Most libraries open on creation, so grab it without waiting for
 			-- the first toggle. That also means the panel is already up right
 			-- now and OnOpen will never fire for it, so the island has to be
