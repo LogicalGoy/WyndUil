@@ -99,7 +99,24 @@ function Module.Init(cfg)
 		table.clear(self.Instances)
 	end
 
+	-- Callbacks fired by Roblox itself -- Heartbeat, OnClientEvent, a UI button
+	-- -- run at the game's thread identity (2), not the executor's (8). Any
+	-- elevated call inside one then fails with "lacking capability Plugin",
+	-- which is confusing because the same line works at the top level. Raising
+	-- the identity on entry to every wrapped call makes that class of failure
+	-- go away for good.
+	local setidentity = setthreadidentity
+		or (syn and syn.set_thread_identity)
+		or set_thread_identity
+
+	local function Elevate()
+		if setidentity then pcall(setidentity, 8) end
+	end
+
+	Core.Elevate = Elevate
+
 	local function SafeCall(fn, ...)
+		Elevate()
 		local ok, err = pcall(fn, ...)
 		if not ok then warn(("[%s] %s"):format(HUB_NAME, tostring(err))) end
 		return ok
@@ -123,6 +140,7 @@ function Module.Init(cfg)
 	end
 
 	local function RunJob(name, fn, dt)
+		Elevate()
 		local ok, err = pcall(fn, dt)
 		if not ok then warn(("[%s] job '%s' errored: %s"):format(HUB_NAME, name, tostring(err))) end
 	end
