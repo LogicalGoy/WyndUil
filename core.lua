@@ -952,6 +952,16 @@ function Module.Init(cfg)
 				end)
 			end)
 
+			-- The library's own close button destroys the window outright, and
+			-- most people will use that rather than a menu item. Treat it as a
+			-- full unload, otherwise the script keeps running with no way back
+			-- to its own UI and the island is left orphaned on screen.
+			SafeCall(function()
+				window:OnDestroy(function()
+					Cleanup:Destroy()
+				end)
+			end)
+
 			-- Most libraries open on creation, so grab it without waiting for
 			-- the first toggle.
 			task.delay(1, Capture)
