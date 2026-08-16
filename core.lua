@@ -226,6 +226,7 @@ function Module.Init(cfg)
 		local pushToken, sizeToken = 0, 0
 		local hovering, menuOpen, wanted = false, false, true
 		local rotIndex = 1
+		local currentW, currentH = IDLE_W, IDLE_H
 		local opener = nil
 
 		-- GetProductInfo yields and can fail, so it must never sit in the boot
@@ -244,6 +245,25 @@ function Module.Init(cfg)
 		end
 
 		-- // Instances // --
+
+		-- Re-running the script without unloading would stack a new pill over
+		-- the old one, and only the newest has an owner to clean it up. The
+		-- ScreenGui name is randomised, so we identify strays by the child
+		-- button instead and clear them before building ours.
+		local function DestroyStrayIslands()
+			local hosts = { Core.gethui(), LocalPlayer:FindFirstChild("PlayerGui") }
+			for _, host in ipairs(hosts) do
+				if host then
+					for _, child in ipairs(host:GetChildren()) do
+						if child:IsA("ScreenGui") and child:FindFirstChild("Island") then
+							pcall(function() child:Destroy() end)
+						end
+					end
+				end
+			end
+		end
+
+		DestroyStrayIslands()
 
 		local gui = Cleanup:Instance(Instance.new("ScreenGui"))
 		gui.Name = HttpService:GenerateGUID(false)
@@ -390,10 +410,9 @@ function Module.Init(cfg)
 			local padding = claimed and 62 or 34 -- room for the logo once claimed
 			local maxWidth = math.min(400, Camera.ViewportSize.X - 40)
 
-			SpringSize(
-				math.clamp(math.floor(widest + padding), IDLE_W, maxWidth),
-				twoLine and (IDLE_H + 16) or IDLE_H
-			)
+			currentW = math.clamp(math.floor(widest + padding), IDLE_W, maxWidth)
+			currentH = twoLine and (IDLE_H + 16) or IDLE_H
+			SpringSize(currentW, currentH)
 
 			SwapText(title, head, twoLine and -9 or 0, 0)
 
@@ -449,67 +468,104 @@ function Module.Init(cfg)
 		end
 
 		-- // Morph // --
-		-- The window sits centre-screen and the island lives at the top, so
-		-- closing flies the pill up from centre while it grows, and opening
-		-- drops it back down while it shrinks away. Anchor-relative, so it
-		-- needs nothing from WindUI's internals and cannot break when the
-		-- library changes.
+		-- Closing does not just hide the panel: a ghost of it collapses into the
+		-- island, then the capsule snaps open horizontally. The ghost exists
+		-- because WindUI runs its own close animation on the real frame, and two
+		-- tweens fighting over one instance looks worse than a stand-in.
 
 		local HOME = UDim2.new(0.5, 0, 0, 10)
-		local ORIGIN = UDim2.new(0.5, 0, 0.5, -20)
 		local morphToken = 0
 
-		local IN_MOVE = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		local IN_FADE = TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		local OUT_MOVE = TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		local SUCK = TweenInfo.new(0.30, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		local SNAP = TweenInfo.new(0.46, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		local FILL = TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-		local function MorphIn()
+		-- fromPos/fromSize are the panel's absolute geometry. Omit them and the
+		-- island simply snaps in without a ghost, which is what boot does.
+		local function MorphIn(fromPos, fromSize)
 			morphToken += 1
 			local token = morphToken
 
-			pill.Position = ORIGIN
-			pill.BackgroundTransparency = 1
-			scale.Scale = 0.35
-			title.TextTransparency = 1
-			stroke.Transparency = 1
-			pill.Visible = true
+			local delay = 0
 
-			TweenService:Create(pill, IN_MOVE, { Position = HOME }):Play()
-			TweenService:Create(scale, IN_MOVE, { Scale = 1 }):Play()
-			TweenService:Create(pill, IN_FADE, { BackgroundTransparency = 0.02 }):Play()
+			if fromPos and fromSize and fromSize.X > 0 then
+				local ghost = Instance.new("Frame")
+				ghost.AnchorPoint = Vector2.new(0.5, 0.5)
+				ghost.Position = UDim2.fromOffset(fromPos.X + fromSize.X / 2, fromPos.Y + fromSize.Y / 2)
+				ghost.Size = UDim2.fromOffset(fromSize.X, fromSize.Y)
+				ghost.BackgroundColor3 = Color3.fromRGB(10, 11, 14)
+				ghost.BackgroundTransparency = 0.25
+				ghost.BorderSizePixel = 0
+				ghost.ZIndex = 0
+				ghost.Parent = gui
 
-			-- Text and outline come in a beat later so the capsule reads as
-			-- arriving first and filling in, rather than everything at once.
-			task.delay(0.12, function()
-				if morphToken ~= token then return end
-				TweenService:Create(title, IN_FADE, { TextTransparency = 0 }):Play()
-				TweenService:Create(stroke, IN_FADE, {
-					Transparency = status and 0.45 or 0.75,
+				local gcorner = Instance.new("UICorner")
+				gcorner.CornerRadius = UDim.new(0, 16)
+				gcorner.Parent = ghost
+
+				TweenService:Create(ghost, SUCK, {
+					Position = UDim2.fromOffset(Camera.ViewportSize.X / 2, 10 + IDLE_H / 2),
+					Size = UDim2.fromOffset(IDLE_W * 0.5, IDLE_H * 0.6),
+					BackgroundTransparency = 1,
 				}):Play()
-				if detail ~= nil then
-					TweenService:Create(sub, IN_FADE, { TextTransparency = 0.2 }):Play()
-				end
+
+				task.delay(0.32, function() pcall(function() ghost:Destroy() end) end)
+				delay = 0.24 -- capsule opens as the ghost lands, not after it
+			end
+
+			task.delay(delay, function()
+				if morphToken ~= token then return end
+
+				-- Starts as a sliver at full height and springs out sideways, so
+				-- the motion is horizontal rather than a uniform scale-up.
+				pill.Position = HOME
+				pill.Size = UDim2.fromOffset(22, currentH)
+				pill.BackgroundTransparency = 0.02
+				scale.Scale = 1
+				title.TextTransparency = 1
+				sub.TextTransparency = 1
+				stroke.Transparency = 1
+				pill.Visible = true
+
+				TweenService:Create(pill, SNAP, {
+					Size = UDim2.fromOffset(currentW, currentH),
+				}):Play()
+
+				-- Content fades in once the capsule is wide enough to hold it.
+				task.delay(0.16, function()
+					if morphToken ~= token then return end
+					TweenService:Create(title, FILL, { TextTransparency = 0 }):Play()
+					TweenService:Create(stroke, FILL, {
+						Transparency = status and 0.45 or 0.75,
+					}):Play()
+					if detail ~= nil then
+						TweenService:Create(sub, FILL, { TextTransparency = 0.2 }):Play()
+					end
+				end)
 			end)
 		end
 
+		-- Opening runs it backwards: the capsule collapses sideways to a sliver
+		-- and the panel takes over from there.
 		local function MorphOut()
 			morphToken += 1
 			local token = morphToken
 
-			TweenService:Create(pill, OUT_MOVE, {
-				Position = ORIGIN,
+			local COLLAPSE = TweenInfo.new(0.20, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+
+			TweenService:Create(pill, COLLAPSE, {
+				Size = UDim2.fromOffset(22, currentH),
 				BackgroundTransparency = 1,
 			}):Play()
-			TweenService:Create(scale, OUT_MOVE, { Scale = 0.35 }):Play()
-			TweenService:Create(title, OUT_MOVE, { TextTransparency = 1 }):Play()
-			TweenService:Create(sub, OUT_MOVE, { TextTransparency = 1 }):Play()
-			TweenService:Create(stroke, OUT_MOVE, { Transparency = 1 }):Play()
+			TweenService:Create(title, FILL, { TextTransparency = 1 }):Play()
+			TweenService:Create(sub, FILL, { TextTransparency = 1 }):Play()
+			TweenService:Create(stroke, FILL, { Transparency = 1 }):Play()
 
-			task.delay(0.26, function()
+			task.delay(0.22, function()
 				if morphToken ~= token then return end
 				pill.Visible = false
-				pill.Position = HOME
-				scale.Scale = 1
+				pill.Size = UDim2.fromOffset(currentW, currentH)
+				pill.BackgroundTransparency = 0.02
 			end)
 		end
 
@@ -518,9 +574,15 @@ function Module.Init(cfg)
 			if wanted and not menuOpen then MorphIn() else MorphOut() end
 		end
 
-		function Island:SetMenuOpen(open)
+		-- The template hands over the panel's geometry so the ghost knows where
+		-- to collapse from.
+		function Island:SetMenuOpen(open, framePos, frameSize)
 			menuOpen = open and true or false
-			if wanted and not menuOpen then MorphIn() else MorphOut() end
+			if wanted and not menuOpen then
+				MorphIn(framePos, frameSize)
+			else
+				MorphOut()
+			end
 		end
 
 		function Island:SetOpener(fn)
@@ -566,6 +628,16 @@ function Module.Init(cfg)
 
 		pill.MouseButton1Click:Connect(function()
 			if opener then SafeCall(opener) end
+		end)
+
+		-- Registered as well as tracked by Cleanup:Instance, because the
+		-- carousel and the morph both run through task.delay: an in-flight
+		-- one firing after teardown must not find a live pill to show.
+		Cleanup:Callback(function()
+			morphToken += 1
+			pushToken += 1
+			pill.Visible = false
+			pcall(function() gui:Destroy() end)
 		end)
 
 		-- Boot: lay out the content, then bounce in from centre so the very
