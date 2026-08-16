@@ -228,6 +228,7 @@ function Module.Init(cfg)
 		local rotIndex = 1
 		local currentW, currentH = IDLE_W, IDLE_H
 		local opener = nil
+		local accent = ACCENT
 
 		-- GetProductInfo yields and can fail, so it must never sit in the boot
 		-- path. Fetch in the background; the carousel shows the placeholder
@@ -295,7 +296,7 @@ function Module.Init(cfg)
 		corner.Parent = pill
 
 		local stroke = Instance.new("UIStroke")
-		stroke.Color = ACCENT
+		stroke.Color = accent
 		stroke.Transparency = 0.75
 		stroke.Thickness = 1
 		stroke.Parent = pill
@@ -333,7 +334,7 @@ function Module.Init(cfg)
 		sub.Size = UDim2.new(1, -28, 0, 13)
 		sub.Font = Enum.Font.Gotham
 		sub.TextSize = TEXT_SIZE - 2
-		sub.TextColor3 = ACCENT
+		sub.TextColor3 = accent
 		sub.TextXAlignment = Enum.TextXAlignment.Center
 		sub.TextTruncate = Enum.TextTruncate.AtEnd
 		sub.TextTransparency = 0.2
@@ -503,6 +504,12 @@ function Module.Init(cfg)
 				gcorner.CornerRadius = UDim.new(0, 16)
 				gcorner.Parent = ghost
 
+				-- Roblox clamps a corner radius to half the shorter side, so tweening
+				-- well past that turns the panel into a capsule as it shrinks: it
+				-- takes the island's shape on the way in rather than staying a
+				-- rounded rectangle that pops.
+				TweenService:Create(gcorner, SUCK, { CornerRadius = UDim.new(0, 60) }):Play()
+
 				TweenService:Create(ghost, SUCK, {
 					Position = UDim2.fromOffset(Camera.ViewportSize.X / 2, 10 + IDLE_H / 2),
 					Size = UDim2.fromOffset(IDLE_W * 0.5, IDLE_H * 0.6),
@@ -587,6 +594,15 @@ function Module.Init(cfg)
 
 		function Island:SetOpener(fn)
 			opener = fn
+		end
+
+		-- The island is built before any UI library exists, so it cannot read a
+		-- theme itself. Hand it one and it will follow along.
+		function Island:SetAccent(color)
+			if typeof(color) ~= "Color3" then return end
+			accent = color
+			stroke.Color = accent
+			sub.TextColor3 = accent
 		end
 
 		-- One call wires the island to a UI library's window: the pill becomes
@@ -723,7 +739,13 @@ function Module.Init(cfg)
 		Cleanup:Callback(function()
 			morphToken += 1
 			pushToken += 1
-			pill.Visible = false
+
+			-- Destroy can be refused when the GUI sits in a protected container,
+			-- and pcall would swallow that and leave the pill on screen. Disable
+			-- and unparent first so it is gone either way.
+			pcall(function() pill.Visible = false end)
+			pcall(function() gui.Enabled = false end)
+			pcall(function() gui.Parent = nil end)
 			pcall(function() gui:Destroy() end)
 		end)
 
