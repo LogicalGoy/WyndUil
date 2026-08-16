@@ -86,18 +86,10 @@ function Module.Init(cfg)
 	function Cleanup:Instance(i) self.Instances[#self.Instances + 1] = i return i end
 	function Cleanup:Callback(f) self.Callbacks[#self.Callbacks + 1] = f return f end
 
-	function Cleanup:Destroy()
-		if self.Dead then return end
-		self.Dead = true
-
-		for _, fn in ipairs(self.Callbacks) do pcall(fn) end
-		for _, c in ipairs(self.Connections) do pcall(function() c:Disconnect() end) end
-		for _, i in ipairs(self.Instances) do pcall(function() i:Destroy() end) end
-
-		table.clear(self.Callbacks)
-		table.clear(self.Connections)
-		table.clear(self.Instances)
-	end
+	-- Defined after the Scheduler exists, further down: teardown has to stop
+	-- the jobs before it runs anything else, and it cannot reference the
+	-- Scheduler from here.
+	Cleanup.Destroy = nil
 
 	-- Callbacks fired by Roblox itself -- Heartbeat, OnClientEvent, a UI button
 	-- -- run at the game's thread identity (2), not the executor's (8). Any
@@ -140,6 +132,8 @@ function Module.Init(cfg)
 	end
 
 	local function RunJob(name, fn, dt)
+		-- A job queued for this frame can still fire after teardown began.
+		if Cleanup.Dead then return end
 		Elevate()
 		local ok, err = pcall(fn, dt)
 		if not ok then warn(("[%s] job '%s' errored: %s"):format(HUB_NAME, name, tostring(err))) end
@@ -159,6 +153,33 @@ function Module.Init(cfg)
 	Cleanup:Connection(RunService.RenderStepped:Connect(function(dt)
 		for name, fn in pairs(Scheduler.Frame) do RunJob(name, fn, dt) end
 	end))
+
+	-- Order matters. Clearing the job tables first is what actually stops the
+	-- features: disconnecting Heartbeat alone left every job registered, and
+	-- callbacks used to run while the scheduler was still ticking, so anything
+	-- they touched could be re-created a frame later.
+	function Cleanup:Destroy()
+		if self.Dead then return end
+		self.Dead = true
+
+		table.clear(Scheduler.Heart)
+		table.clear(Scheduler.Frame)
+		table.clear(Scheduler.Ticks)
+
+		for _, c in ipairs(self.Connections) do pcall(function() c:Disconnect() end) end
+		for _, fn in ipairs(self.Callbacks) do pcall(fn) end
+		for _, i in ipairs(self.Instances) do pcall(function() i:Destroy() end) end
+
+		table.clear(self.Callbacks)
+		table.clear(self.Connections)
+		table.clear(self.Instances)
+	end
+
+	-- Registering a job after teardown would silently resurrect the script.
+	local RawJob, RawRender, RawEvery = Scheduler.Job, Scheduler.OnRender, Scheduler.Every
+	function Scheduler:Job(n, f) if not Cleanup.Dead then RawJob(self, n, f) end end
+	function Scheduler:OnRender(n, f) if not Cleanup.Dead then RawRender(self, n, f) end end
+	function Scheduler:Every(n, i, f) if not Cleanup.Dead then RawEvery(self, n, i, f) end end
 
 	-- ======================================================== UTIL
 
@@ -352,12 +373,14 @@ function Module.Init(cfg)
 		-- blank square, so the label hides itself if IsLoaded stays false.
 		local logoMode = ICFG.ShowLogo or "Always"
 		local logoOk = LOGO_ID ~= nil
+		-- Clamped to the capsule height so a large value cannot overflow it.
+		local logoSize = math.clamp(tonumber(ICFG.LogoSize) or 18, 8, IDLE_H - 6)
 
 		local logo = Instance.new("ImageLabel")
 		logo.BackgroundTransparency = 1
 		logo.AnchorPoint = Vector2.new(0, 0.5)
 		logo.Position = UDim2.new(0, 12, 0.5, 0)
-		logo.Size = UDim2.fromOffset(16, 16)
+		logo.Size = UDim2.fromOffset(logoSize, logoSize)
 		logo.Image = LOGO_ID and ("rbxassetid://" .. LOGO_ID) or ""
 		logo.ImageTransparency = 1
 		logo.Visible = false
@@ -516,7 +539,7 @@ function Module.Init(cfg)
 			-- long item name grows the capsule instead of truncating away.
 			local widest = math.max(Measure(head, TEXT_SIZE), twoLine and Measure(body, TEXT_SIZE - 2) or 0)
 			local padding = 34
-			if logoOk and (logoMode == "Always" or claimed) then padding = padding + 28 end
+			if logoOk and (logoMode == "Always" or claimed) then padding = padding + logoSize + 12 end
 			if badgeText ~= nil then padding = padding + 34 end
 			local maxWidth = math.min(400, Camera.ViewportSize.X - 40)
 
@@ -826,6 +849,12 @@ function Module.Init(cfg)
 			opener = fn
 		end
 
+		function Island:SetLogoSize(px)
+			logoSize = math.clamp(tonumber(px) or 18, 8, IDLE_H - 6)
+			logo.Size = UDim2.fromOffset(logoSize, logoSize)
+			Render()
+		end
+
 		-- TopCenter | TopLeft | TopRight | BottomCenter
 		function Island:SetPosition(name)
 			if not ANCHORS[name] then return end
@@ -1022,8 +1051,12 @@ function Module.Init(cfg)
 		-- carousel and the morph both run through task.delay: an in-flight
 		-- one firing after teardown must not find a live pill to show.
 		Cleanup:Callback(function()
+			-- Bumping the tokens invalidates every in-flight task.delay so a
+			-- morph or a queued push cannot show the pill again mid-teardown.
 			morphToken += 1
 			pushToken += 1
+			pushQueue = {}
+			statusExpiry = nil
 
 			-- Destroy can be refused when the GUI sits in a protected container,
 			-- and pcall would swallow that and leave the pill on screen. Disable
