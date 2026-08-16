@@ -24992,8 +24992,16 @@ p.UIScale=r.UIScale
 i:Init(p)
 end
 
+local SupraSetIdentity=setthreadidentity or set_thread_identity or (syn and syn.set_thread_identity)
+local function SupraElevate(u)
+if not SupraSetIdentity then return u end
+return function(...)
+pcall(SupraSetIdentity,8)
+return u(...)
+end
+end
 function p.AddSignal(r,u)
-local v=r:Connect(u)
+local v=r:Connect(SupraElevate(u))
 table.insert(p.Signals,v)
 return v
 end
@@ -25388,6 +25396,7 @@ return x
 end
 
 function p.Tween(r,u,v,...)
+if SupraSetIdentity then pcall(SupraSetIdentity,8) end
 return f:Create(r,TweenInfo.new(u,...),v)
 end
 
@@ -32562,6 +32571,7 @@ end
 end
 
 function UpdatePosition()
+if setthreadidentity then pcall(setthreadidentity,8) end
 local at=ap.UIElements.Dropdown or ap.DropdownFrame.UIElements.Main
 local au=ap.UIElements.MenuCanvas
 
@@ -33037,6 +33047,7 @@ RecalculateListSize()
 RecalculateCanvasSize()
 
 function as.Open(au)
+if setthreadidentity then pcall(setthreadidentity,8) end
 if not ap.Locked then
 ap.UIElements.Menu.Visible=true
 ap.UIElements.MenuCanvas.Visible=true
@@ -34943,6 +34954,7 @@ VerticalAlignment="Top",
 an.ElementFrame=at
 
 at.Outline.Top:GetPropertyChangedSignal"AbsoluteSize":Connect(function()
+if setthreadidentity then pcall(setthreadidentity,8) end
 at.Outline.Content.Position=UDim2.new(0,0,0,(at.Outline.Top.AbsoluteSize.Y/am.UIScale)+10)
 
 if an.Opened then
@@ -34993,6 +35005,7 @@ at:Destroy()
 end
 
 function an.Open(av,aw)
+if setthreadidentity then pcall(setthreadidentity,8) end
 if an.Expandable then
 an.Opened=true
 if aw then
