@@ -789,6 +789,13 @@ function Module.Init(cfg)
 			task.delay(delay, function()
 				if morphToken ~= token then return end
 
+				-- Already up, so the ghost collapsing into it is the whole
+				-- effect. Re-running the capsule open here would blink it.
+				if pill.Visible then
+					Render()
+					return
+				end
+
 				-- Starts as a sliver at full height and springs out sideways, so
 				-- the motion is horizontal rather than a uniform scale-up.
 				pill.Position = Anchor()[1]
@@ -849,12 +856,18 @@ function Module.Init(cfg)
 
 		-- The template hands over the panel's geometry so the ghost knows where
 		-- to collapse from.
+		-- The island stays on screen while the menu is up; the only thing that
+		-- takes it away is Island:Visible(false). Closing still melts the panel
+		-- into it -- that is the ghost's job, and MorphIn leaves an already
+		-- visible capsule alone rather than blinking it out and back.
 		function Island:SetMenuOpen(open, framePos, frameSize)
 			menuOpen = open and true or false
-			if wanted and not menuOpen then
-				MorphIn(framePos, frameSize)
-			else
+			if not wanted then
 				MorphOut()
+				return
+			end
+			if not menuOpen then
+				MorphIn(framePos, frameSize)
 			end
 		end
 
