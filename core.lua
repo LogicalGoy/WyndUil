@@ -65,6 +65,291 @@ function Module.Init(cfg)
 	local LocalPlayer = Players.LocalPlayer
 	local Camera = Workspace.CurrentCamera
 
+	-- ======================================================== LOCALIZATION
+	-- Strings every hub has: tabs, config manager, interface, webhook chrome.
+	-- A game script only supplies its own vocabulary and Core merges the two,
+	-- so the settings half of a new script is translated the moment it exists.
+
+	local LANGUAGES = {
+		{ Code = "en", Name = "English" },
+		{ Code = "es", Name = "Espanol" },
+		{ Code = "pt", Name = "Portugues" },
+		{ Code = "fr", Name = "Francais" },
+		{ Code = "ru", Name = "Russkiy" },
+		{ Code = "tr", Name = "Turkce" },
+		{ Code = "zh", Name = "Chinese" },
+	}
+	Core.Languages = LANGUAGES
+
+	local SHARED_STRINGS = {
+		en = {
+			["Colour scheme for the whole menu"] = "Colour scheme for the whole menu",
+			["Configs"] = "Configs",
+			["Copy Discord Invite"] = "Copy Discord Invite",
+			["Discord"] = "Discord",
+			["Discord Webhook URL"] = "Discord Webhook URL",
+			["ESP"] = "ESP",
+			["Farm"] = "Farm",
+			["Home"] = "Home",
+			["Interface"] = "Interface",
+			["Language"] = "Language",
+			["Load"] = "Load",
+			["Main"] = "Main",
+			["Menu Key"] = "Menu Key",
+			["Menu language"] = "Menu language",
+			["Movement"] = "Movement",
+			["Name"] = "Name",
+			["Note"] = "Note",
+			["Paste your Discord webhook URL here"] = "Paste your Discord webhook URL here",
+			["Pets"] = "Pets",
+			["Progress"] = "Progress",
+			["Restores everything this script changed and closes the menu"] = "Restores everything this script changed and closes the menu",
+			["Save"] = "Save",
+			["Saved"] = "Saved",
+			["Send a test notification to verify the URL"] = "Send a test notification to verify the URL",
+			["Settings"] = "Settings",
+			["Show Island"] = "Show Island",
+			["System"] = "System",
+			["Test Webhook"] = "Test Webhook",
+			["The status pill at the top of the screen"] = "The status pill at the top of the screen",
+			["Theme"] = "Theme",
+			["UI Scale"] = "UI Scale",
+			["Unavailable"] = "Unavailable",
+			["Unload"] = "Unload",
+			["Webhook"] = "Webhook",
+			["Your executor exposes no HTTP request function, so webhooks are disabled."] = "Your executor exposes no HTTP request function, so webhooks are disabled.",
+			["Your executor has no file access, so configs are disabled."] = "Your executor has no file access, so configs are disabled.",
+		},
+		es = {
+			["Colour scheme for the whole menu"] = "Esquema de color de todo el menu",
+			["Configs"] = "Configuraciones",
+			["Copy Discord Invite"] = "Copiar invitacion de Discord",
+			["Discord"] = "Discord",
+			["Discord Webhook URL"] = "URL del webhook de Discord",
+			["ESP"] = "ESP",
+			["Farm"] = "Granja",
+			["Home"] = "Inicio",
+			["Interface"] = "Interfaz",
+			["Language"] = "Idioma",
+			["Load"] = "Cargar",
+			["Main"] = "Principal",
+			["Menu Key"] = "Tecla del menu",
+			["Menu language"] = "Idioma del menu",
+			["Movement"] = "Movimiento",
+			["Name"] = "Nombre",
+			["Note"] = "Nota",
+			["Paste your Discord webhook URL here"] = "Pega aqui la URL de tu webhook de Discord",
+			["Pets"] = "Mascotas",
+			["Progress"] = "Progreso",
+			["Restores everything this script changed and closes the menu"] = "Revierte todo lo que cambio el script y cierra el menu",
+			["Save"] = "Guardar",
+			["Saved"] = "Guardados",
+			["Send a test notification to verify the URL"] = "Envia una notificacion de prueba para verificar la URL",
+			["Settings"] = "Ajustes",
+			["Show Island"] = "Mostrar isla",
+			["System"] = "Sistema",
+			["Test Webhook"] = "Probar webhook",
+			["The status pill at the top of the screen"] = "La capsula de estado en la parte superior",
+			["Theme"] = "Tema",
+			["UI Scale"] = "Escala de la interfaz",
+			["Unavailable"] = "No disponible",
+			["Unload"] = "Descargar",
+			["Webhook"] = "Webhook",
+			["Your executor exposes no HTTP request function, so webhooks are disabled."] = "Tu executor no expone una funcion HTTP, los webhooks estan desactivados.",
+			["Your executor has no file access, so configs are disabled."] = "Tu executor no tiene acceso a archivos, las configuraciones estan desactivadas.",
+		},
+		pt = {
+			["Colour scheme for the whole menu"] = "Esquema de cores de todo o menu",
+			["Configs"] = "Configuracoes",
+			["Copy Discord Invite"] = "Copiar convite do Discord",
+			["Discord"] = "Discord",
+			["Discord Webhook URL"] = "URL do webhook do Discord",
+			["ESP"] = "ESP",
+			["Farm"] = "Fazenda",
+			["Home"] = "Inicio",
+			["Interface"] = "Interface",
+			["Language"] = "Idioma",
+			["Load"] = "Carregar",
+			["Main"] = "Principal",
+			["Menu Key"] = "Tecla do menu",
+			["Menu language"] = "Idioma do menu",
+			["Movement"] = "Movimento",
+			["Name"] = "Nome",
+			["Note"] = "Nota",
+			["Paste your Discord webhook URL here"] = "Cole aqui a URL do seu webhook do Discord",
+			["Pets"] = "Pets",
+			["Progress"] = "Progresso",
+			["Restores everything this script changed and closes the menu"] = "Reverte tudo que o script mudou e fecha o menu",
+			["Save"] = "Salvar",
+			["Saved"] = "Salvos",
+			["Send a test notification to verify the URL"] = "Envia uma notificacao de teste para verificar a URL",
+			["Settings"] = "Configuracoes",
+			["Show Island"] = "Mostrar ilha",
+			["System"] = "Sistema",
+			["Test Webhook"] = "Testar webhook",
+			["The status pill at the top of the screen"] = "A capsula de status no topo da tela",
+			["Theme"] = "Tema",
+			["UI Scale"] = "Escala da interface",
+			["Unavailable"] = "Indisponivel",
+			["Unload"] = "Descarregar",
+			["Webhook"] = "Webhook",
+			["Your executor exposes no HTTP request function, so webhooks are disabled."] = "Seu executor nao expoe funcao HTTP, os webhooks estao desativados.",
+			["Your executor has no file access, so configs are disabled."] = "Seu executor nao tem acesso a arquivos, as configuracoes estao desativadas.",
+		},
+		fr = {
+			["Colour scheme for the whole menu"] = "Palette de couleurs de tout le menu",
+			["Configs"] = "Configurations",
+			["Copy Discord Invite"] = "Copier l'invitation Discord",
+			["Discord"] = "Discord",
+			["Discord Webhook URL"] = "URL du webhook Discord",
+			["ESP"] = "ESP",
+			["Farm"] = "Ferme",
+			["Home"] = "Accueil",
+			["Interface"] = "Interface",
+			["Language"] = "Langue",
+			["Load"] = "Charger",
+			["Main"] = "Principal",
+			["Menu Key"] = "Touche du menu",
+			["Menu language"] = "Langue du menu",
+			["Movement"] = "Deplacement",
+			["Name"] = "Nom",
+			["Note"] = "Note",
+			["Paste your Discord webhook URL here"] = "Colle ici l'URL de ton webhook Discord",
+			["Pets"] = "Familiers",
+			["Progress"] = "Progression",
+			["Restores everything this script changed and closes the menu"] = "Restaure tout ce que le script a modifie et ferme le menu",
+			["Save"] = "Sauvegarder",
+			["Saved"] = "Sauvegardes",
+			["Send a test notification to verify the URL"] = "Envoie une notification de test pour verifier l'URL",
+			["Settings"] = "Parametres",
+			["Show Island"] = "Afficher l'ilot",
+			["System"] = "Systeme",
+			["Test Webhook"] = "Tester le webhook",
+			["The status pill at the top of the screen"] = "La pastille d'etat en haut de l'ecran",
+			["Theme"] = "Theme",
+			["UI Scale"] = "Echelle de l'interface",
+			["Unavailable"] = "Indisponible",
+			["Unload"] = "Decharger",
+			["Webhook"] = "Webhook",
+			["Your executor exposes no HTTP request function, so webhooks are disabled."] = "Ton executor n'expose aucune fonction HTTP, les webhooks sont desactives.",
+			["Your executor has no file access, so configs are disabled."] = "Ton executor n'a pas d'acces fichier, les configurations sont desactivees.",
+		},
+		ru = {
+			["Colour scheme for the whole menu"] = "Цветовая схема всего меню",
+			["Configs"] = "Конфиги",
+			["Copy Discord Invite"] = "Скопировать приглашение Discord",
+			["Discord"] = "Discord",
+			["Discord Webhook URL"] = "URL вебхука Discord",
+			["ESP"] = "ESP",
+			["Farm"] = "Ферма",
+			["Home"] = "Главная",
+			["Interface"] = "Интерфейс",
+			["Language"] = "Язык",
+			["Load"] = "Загрузить",
+			["Main"] = "Главное",
+			["Menu Key"] = "Клавиша меню",
+			["Menu language"] = "Язык меню",
+			["Movement"] = "Передвижение",
+			["Name"] = "Название",
+			["Note"] = "Примечание",
+			["Paste your Discord webhook URL here"] = "Вставьте сюда URL вебхука Discord",
+			["Pets"] = "Питомцы",
+			["Progress"] = "Прогресс",
+			["Restores everything this script changed and closes the menu"] = "Возвращает всё изменённое скриптом и закрывает меню",
+			["Save"] = "Сохранить",
+			["Saved"] = "Сохранённые",
+			["Send a test notification to verify the URL"] = "Отправляет тестовое уведомление для проверки URL",
+			["Settings"] = "Настройки",
+			["Show Island"] = "Показать островок",
+			["System"] = "Система",
+			["Test Webhook"] = "Проверить вебхук",
+			["The status pill at the top of the screen"] = "Капсула состояния вверху экрана",
+			["Theme"] = "Тема",
+			["UI Scale"] = "Масштаб интерфейса",
+			["Unavailable"] = "Недоступно",
+			["Unload"] = "Выгрузка",
+			["Webhook"] = "Webhook",
+			["Your executor exposes no HTTP request function, so webhooks are disabled."] = "Ваш экзекьютор не даёт HTTP-функции, вебхуки отключены.",
+			["Your executor has no file access, so configs are disabled."] = "Ваш экзекьютор не имеет доступа к файлам, конфиги отключены.",
+		},
+		tr = {
+			["Colour scheme for the whole menu"] = "Tum menunun renk semasi",
+			["Configs"] = "Yapilandirmalar",
+			["Copy Discord Invite"] = "Discord davetini kopyala",
+			["Discord"] = "Discord",
+			["Discord Webhook URL"] = "Discord webhook URL'si",
+			["ESP"] = "ESP",
+			["Farm"] = "Ciftlik",
+			["Home"] = "Ana Sayfa",
+			["Interface"] = "Arayuz",
+			["Language"] = "Dil",
+			["Load"] = "Yukle",
+			["Main"] = "Ana",
+			["Menu Key"] = "Menu tusu",
+			["Menu language"] = "Menu dili",
+			["Movement"] = "Hareket",
+			["Name"] = "Ad",
+			["Note"] = "Not",
+			["Paste your Discord webhook URL here"] = "Discord webhook URL'ni buraya yapistir",
+			["Pets"] = "Evcil Hayvanlar",
+			["Progress"] = "Ilerleme",
+			["Restores everything this script changed and closes the menu"] = "Betigin degistirdigi her seyi geri alir ve menuyu kapatir",
+			["Save"] = "Kaydet",
+			["Saved"] = "Kayitli",
+			["Send a test notification to verify the URL"] = "URL'yi dogrulamak icin test bildirimi gonderir",
+			["Settings"] = "Ayarlar",
+			["Show Island"] = "Adayi goster",
+			["System"] = "Sistem",
+			["Test Webhook"] = "Webhook'u test et",
+			["The status pill at the top of the screen"] = "Ekranin ustundeki durum kapsulu",
+			["Theme"] = "Tema",
+			["UI Scale"] = "Arayuz olcegi",
+			["Unavailable"] = "Kullanilamaz",
+			["Unload"] = "Kaldir",
+			["Webhook"] = "Webhook",
+			["Your executor exposes no HTTP request function, so webhooks are disabled."] = "Executor'un HTTP istek fonksiyonu sunmuyor, webhook'lar kapali.",
+			["Your executor has no file access, so configs are disabled."] = "Executor'un dosya erisimi yok, yapilandirmalar kapali.",
+		},
+		zh = {
+			["Colour scheme for the whole menu"] = "整个菜单的配色方案",
+			["Configs"] = "配置",
+			["Copy Discord Invite"] = "复制 Discord 邀请",
+			["Discord"] = "Discord",
+			["Discord Webhook URL"] = "Discord Webhook 链接",
+			["ESP"] = "ESP",
+			["Farm"] = "农场",
+			["Home"] = "主页",
+			["Interface"] = "界面",
+			["Language"] = "语言",
+			["Load"] = "加载",
+			["Main"] = "主要",
+			["Menu Key"] = "菜单按键",
+			["Menu language"] = "菜单语言",
+			["Movement"] = "移动方式",
+			["Name"] = "名称",
+			["Note"] = "说明",
+			["Paste your Discord webhook URL here"] = "在此粘贴你的 Discord Webhook 链接",
+			["Pets"] = "宠物",
+			["Progress"] = "进度",
+			["Restores everything this script changed and closes the menu"] = "还原脚本所做的一切更改并关闭菜单",
+			["Save"] = "保存",
+			["Saved"] = "已保存",
+			["Send a test notification to verify the URL"] = "发送测试通知以验证链接",
+			["Settings"] = "设置",
+			["Show Island"] = "显示灵动岛",
+			["System"] = "系统",
+			["Test Webhook"] = "测试 Webhook",
+			["The status pill at the top of the screen"] = "屏幕顶部的状态胶囊",
+			["Theme"] = "主题",
+			["UI Scale"] = "界面缩放",
+			["Unavailable"] = "不可用",
+			["Unload"] = "卸载",
+			["Webhook"] = "Webhook",
+			["Your executor exposes no HTTP request function, so webhooks are disabled."] = "你的执行器未提供 HTTP 请求函数，Webhook 已禁用。",
+			["Your executor has no file access, so configs are disabled."] = "你的执行器没有文件访问权限，配置已禁用。",
+		},
+	}
+
 	-- ======================================================== SHIMS
 	-- Every executor exposes a different subset. Guard once, here.
 
@@ -125,6 +410,87 @@ function Module.Init(cfg)
 		local ok, err = pcall(fn, ...)
 		if not ok then warn(("[%s] %s"):format(HUB_NAME, tostring(err))) end
 		return ok
+	end
+
+	-- ======================================================== LOADER HANDOFF
+	-- The loader writes the user's setup choices into getgenv().Supra before
+	-- running a script. Empty when the script is executed on its own, in which
+	-- case the caller's defaults stand.
+
+	local Handoff = (getgenv and getgenv().Supra) or {}
+	Core.Handoff = Handoff
+	Core.Lang = type(Handoff.Lang) == "string" and Handoff.Lang or "en"
+	Core.Tier = Handoff.Tier or "Free"
+	Core.FromLoader = Handoff.FromLoader == true
+
+	do
+		local hex = Handoff.AccentHex
+		if type(hex) == "string" then
+			local okc, colour = pcall(Color3.fromHex, hex)
+			if okc then
+				ACCENT = colour
+				-- Named after the colour so re-running never registers a
+				-- duplicate and the theme dropdown keeps one stable entry.
+				Core.ThemeName = "Supra" .. hex:gsub("#", ""):upper()
+			end
+		end
+	end
+	Core.Accent = ACCENT
+
+	-- Wires a UI library to the merged string table, the handoff language and
+	-- a generated accent theme. One call replaces ~60 lines per script.
+	--
+	--   Core.Localize(WindUI, GAME_STRINGS)
+	--
+	-- Must run before any element is created: keys resolve at build time, so
+	-- doing it later leaves the first render in English.
+	function Core.Localize(UI, extra)
+		if not UI then return end
+
+		local merged = {}
+		for _, lang in ipairs(LANGUAGES) do
+			local out = {}
+			for k, v in pairs(SHARED_STRINGS[lang.Code] or {}) do out[k] = v end
+			-- A script may override a shared string; its own wins.
+			for k, v in pairs((extra and extra[lang.Code]) or {}) do out[k] = v end
+			merged[lang.Code] = out
+		end
+
+		SafeCall(function()
+			UI:Localization({
+				Enabled = true,
+				Prefix = "loc:",
+				DefaultLanguage = "en",
+				Translations = merged,
+			})
+		end)
+
+		if Core.Lang ~= "en" then
+			SafeCall(function() UI:SetLanguage(Core.Lang) end)
+		end
+
+		-- Build a real theme from the accent rather than approximating it onto
+		-- the nearest stock one. AddTheme writes into UI.Themes, so ours
+		-- behaves like a built-in and appears in any theme dropdown.
+		if Core.ThemeName then
+			SafeCall(function()
+				local themes = UI.Themes
+				if not (themes and themes.Dark) then
+					Core.ThemeName = nil
+					return
+				end
+				if not themes[Core.ThemeName] then
+					local t = {}
+					for k, v in pairs(themes.Dark) do t[k] = v end
+					t.Name = Core.ThemeName
+					-- The four fields that actually carry the accent.
+					t.Primary, t.Slider, t.Checkbox, t.Toggle = ACCENT, ACCENT, ACCENT, ACCENT
+					UI:AddTheme(t)
+				end
+			end)
+		end
+
+		return Core.ThemeName
 	end
 
 	-- ======================================================== SCHEDULER
@@ -554,7 +920,10 @@ function Module.Init(cfg)
 			local padding = 34
 			if logoOk and (logoMode == "Always" or claimed) then padding = padding + logoSize + 12 end
 			if badgeText ~= nil then padding = padding + 34 end
-			local maxWidth = math.min(400, Camera.ViewportSize.X - 40)
+			-- math.clamp errors outright when max < min, so a viewport that is
+			-- tiny or momentarily reports zero would take the whole script down
+			-- rather than just producing a cramped pill.
+			local maxWidth = math.max(IDLE_W, math.min(400, Camera.ViewportSize.X - 40))
 
 			currentW = math.clamp(math.floor(widest + padding), IDLE_W, maxWidth)
 			currentH = twoLine and (IDLE_H + 16) or IDLE_H
@@ -849,9 +1218,13 @@ function Module.Init(cfg)
 			end)
 		end
 
+		-- The menu's state is irrelevant here now that the island stays up
+		-- alongside it. Checking it meant toggling this from inside the menu --
+		-- the only place the toggle lives -- could turn the island off but
+		-- never back on.
 		function Island:Visible(on)
 			wanted = on and true or false
-			if wanted and not menuOpen then MorphIn() else MorphOut() end
+			if wanted then MorphIn() else MorphOut() end
 		end
 
 		-- The template hands over the panel's geometry so the ghost knows where
