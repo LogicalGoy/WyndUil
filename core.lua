@@ -1287,9 +1287,47 @@ function Module.Init(cfg)
 		--
 		-- expectedSize is whatever you passed the library as the window size;
 		-- it is how the panel is picked out from the other frames on screen.
+		-- The library draws three Mac-style buttons: Fullscreen, Minimize and
+		-- Close. Fullscreen is noise, and the stock Close pops a confirm dialog
+		-- and then destroys the window without unwinding anything the script
+		-- changed. What is left is a pair: Minimize (the island brings it back)
+		-- and a red power button that runs a real unload -- the same teardown as
+		-- the Unload item, so speed and camera go back to how the game had them.
+		--
+		-- Power sits leftmost at the Close slot's layout order, keeping the
+		-- traffic-light muscle memory of "red on the left".
+		local function TrimTopbar(window)
+			local buttons = rawget(window, "TopBarButtons")
+			if type(buttons) ~= "table" then return end
+
+			for _, b in pairs(buttons) do
+				if type(b) == "table" and b.Name ~= "Minimize" and b.Object then
+					pcall(function() b.Object:Destroy() end)
+				end
+			end
+
+			local topbar = rawget(window, "Topbar")
+			if type(topbar) ~= "table" or type(topbar.Button) ~= "function" then return end
+
+			pcall(function()
+				topbar.Button(window, {
+					Name = "Power",
+					Icon = "power",
+					LayoutOrder = 997,
+					Color = Color3.fromHex("#FF5F57"),
+					IconSize = 9,
+					Callback = function()
+						Cleanup:Destroy()
+					end,
+				})
+			end)
+		end
+
 		function Island:AttachWindow(window, expectedSize)
 			if not window then return end
 			expectedSize = expectedSize or Vector2.new(700, 500)
+
+			SafeCall(function() TrimTopbar(window) end)
 
 			local frame, cachedPos, cachedSize
 
@@ -1434,8 +1472,13 @@ function Module.Init(cfg)
 			Scheduler:Stop("IslandRotate")
 			if rotateSeconds <= 0 then return end
 
+			-- menuOpen is deliberately not checked. The island used to hide behind
+			-- the panel, so pausing the carousel while it was up cost nothing;
+			-- now it stays on screen alongside the menu, and freezing it there
+			-- just looked like the pill had died. Hover still pauses it, so the
+			-- text cannot change out from under a click.
 			Scheduler:Every("IslandRotate", rotateSeconds, function()
-				if status ~= nil or hovering or menuOpen or not pill.Visible then return end
+				if status ~= nil or hovering or not pill.Visible then return end
 
 				local items = IdleItems()
 				rotIndex = (rotIndex % #items) + 1
