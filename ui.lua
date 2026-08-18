@@ -38891,7 +38891,11 @@ end)
 end
 
 an.AddSignal(af.InputBegan,function(C,F)
-if F then
+-- Was `if F then return end`. gameProcessedEvent is true for any key the game
+-- or CoreGui also handled, so a title that binds the toggle key -- RightShift
+-- here -- made the menu unreachable until you rebound it. The only input a
+-- menu key must yield to is typing, which is what the Keybind element checks.
+if af:GetFocusedTextBox() then
 return
 end
 
