@@ -38152,12 +38152,13 @@ aw.Topbar.ButtonsType=="Default"and true or false,
 G,
 "WindowTopbarButtonIcon"
 )
-L.Size=aw.Topbar.ButtonsType=="Default"
-and UDim2.new(0,J or aw.TopBarButtonIconSize,0,J or aw.TopBarButtonIconSize)
-or UDim2.new(0,0,0,0)
+-- SUPRA: Mac buttons used to start at zero size / fully transparent and only
+-- grow on MouseEnter, so the glyphs were invisible until you hovered. They are
+-- now drawn at full size from the start; hover only tweens what is already there.
+L.Size=UDim2.new(0,J or aw.TopBarButtonIconSize,0,J or aw.TopBarButtonIconSize)
 L.AnchorPoint=Vector2.new(0.5,0.5)
 L.Position=UDim2.new(0.5,0,0.5,0)
-L.ImageLabel.ImageTransparency=aw.Topbar.ButtonsType=="Default"and 0 or 1
+L.ImageLabel.ImageTransparency=0
 
 if aw.Topbar.ButtonsType~="Default"then
 L.ImageLabel.ImageColor3=an.GetTextColorForHSB(H)
@@ -38261,17 +38262,13 @@ ap(M,0.1,{ImageTransparency=1}):Play()
 
 else
 
-ap(
-L.ImageLabel,
-0.1,
-{ImageTransparency=1},
-Enum.EasingStyle.Quint,
-Enum.EasingDirection.Out
-):Play()
+-- SUPRA: leaving no longer hides the glyph -- it stays at full size and
+-- opacity, so the Mac buttons read the same whether or not the cursor is
+-- near them.
 ap(
 L,
 0.1,
-{Size=UDim2.new(0,0,0,0)},
+{Size=UDim2.new(0,J or aw.TopBarButtonIconSize,0,J or aw.TopBarButtonIconSize)},
 Enum.EasingStyle.Quint,
 Enum.EasingDirection.Out
 ):Play()
