@@ -510,11 +510,20 @@ function Module.Init(cfg)
 		self.Heart[name], self.Frame[name], self.Ticks[name] = nil, nil, nil
 	end
 
+	-- Every job shares one Heartbeat handler, so a job that yields (task.wait,
+	-- a remote round trip) suspends the whole pass and the next frame re-enters
+	-- it before it finished. That silently corrupts any job holding state
+	-- between steps. A job still running is skipped rather than stacked.
+	local Running = {}
+	Core.__Running = Running -- debug visibility
+
 	local function RunJob(name, fn, dt)
 		-- A job queued for this frame can still fire after teardown began.
-		if Cleanup.Dead then return end
+		if Cleanup.Dead or Running[name] then return end
+		Running[name] = true
 		Elevate()
 		local ok, err = pcall(fn, dt)
+		Running[name] = nil
 		if not ok then warn(("[%s] job '%s' errored: %s"):format(HUB_NAME, name, tostring(err))) end
 	end
 
