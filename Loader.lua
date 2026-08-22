@@ -594,13 +594,22 @@ Stroke(C.Line, 1, Card)
 
 local CardScale = New("UIScale", { Scale = 1 }, Card)
 
-local CardLimit = New("UISizeConstraint", {
-	MaxSize = Vector2.new(CARD_W, Camera.ViewportSize.Y - 60),
-}, Card)
+-- Chrome that must always stay on screen: header, both divider lines and the
+-- footer. The body gets whatever is left and scrolls inside it, so the Next
+-- button can never be pushed out of the card.
+local CHROME_H = 58 + 1 + 1 + 62
 
-Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-	CardLimit.MaxSize = Vector2.new(CARD_W, Camera.ViewportSize.Y - 60)
-end)
+local function CardMetrics()
+	local vp = Camera.ViewportSize
+	-- Leave a margin so the card never touches the screen edge on a phone.
+	local w = math.min(CARD_W, vp.X - 24)
+	local h = vp.Y - (vp.Y < 500 and 24 or 60)
+	return w, h
+end
+
+local CardLimit = New("UISizeConstraint", {
+	MaxSize = Vector2.new(CardMetrics()),
+}, Card)
 
 Stack(Card, 0)
 
@@ -654,13 +663,41 @@ New("Frame", {
 	LayoutOrder = 2,
 }, Card)
 
-local Body = New("Frame", {
+-- Scrolls rather than grows. Previously this was a plain frame with
+-- AutomaticSize.Y, so a tall step (the terms, on a short screen) pushed the
+-- footer past the card's height cap and the Next button became unreachable --
+-- which is exactly why mobile could not get past the terms.
+local Body = New("ScrollingFrame", {
 	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
 	Size = UDim2.new(1, 0, 0, 0),
-	AutomaticSize = Enum.AutomaticSize.Y,
+	CanvasSize = UDim2.new(),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ScrollingDirection = Enum.ScrollingDirection.Y,
+	ScrollBarThickness = 3,
+	ScrollBarImageColor3 = C.Muted,
+	ScrollBarImageTransparency = 0.5,
+	ElasticBehavior = Enum.ElasticBehavior.WhenScrollable,
 	LayoutOrder = 3,
 }, Card)
 Stack(Body, GAP, PAD)
+
+local BodyLayout = Body:FindFirstChildOfClass("UIListLayout")
+
+-- Hug the content when it is short, cap it when it is not.
+local function FitBody()
+	local w, h = CardMetrics()
+	CardLimit.MaxSize = Vector2.new(w, h)
+	local avail = math.max(h - CHROME_H, 80)
+	local content = (BodyLayout and BodyLayout.AbsoluteContentSize.Y or 0) + PAD * 2
+	Body.Size = UDim2.new(1, 0, 0, math.min(content, avail))
+end
+
+if BodyLayout then
+	BodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(FitBody)
+end
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(FitBody)
+task.defer(FitBody)
 
 local FooterLine = New("Frame", {
 	BackgroundColor3 = C.Line,
@@ -800,6 +837,8 @@ local function SwapBody(build)
 end
 
 local function ClearBody()
+	-- Back to the top, or a step entered after a scrolled one opens halfway down.
+	Body.CanvasPosition = Vector2.new()
 	for _, c in ipairs(Body:GetChildren()) do
 		if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end
 	end
@@ -890,10 +929,15 @@ Steps[2] = {
 		Text(Body, T("terms_title"), 19, C.Text, Enum.Font.GothamBold, 1)
 		Text(Body, T("terms_sub"), 13, C.Muted, Enum.Font.Gotham, 2)
 
+		-- Everything else on this step (title, subtitle, accept row, copy
+		-- button, gaps) costs ~180px, so give the terms whatever is left of the
+		-- usable area rather than a fixed 210 that does not fit a phone.
+		local termsH = math.clamp(Camera.ViewportSize.Y - CHROME_H - 200, 96, 210)
+
 		local scroll = New("ScrollingFrame", {
 			BackgroundColor3 = C.Panel,
 			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 210),
+			Size = UDim2.new(1, 0, 0, termsH),
 			CanvasSize = UDim2.new(),
 			ScrollBarThickness = 4,
 			ScrollBarImageColor3 = C.Muted,
@@ -1443,6 +1487,7 @@ end)
 task.spawn(FetchManifest)
 
 Card.Size = UDim2.fromOffset(CARD_W, 0)
+task.defer(FitBody)
 
 if cfg.Done and cfg.Terms then
 	SetFooter(false, false)
